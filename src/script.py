@@ -11,7 +11,7 @@ load_dotenv()
 DATABASE_TYPE = os.getenv('DATABASE_TYPE')
 DBAPI = os.getenv('DBAPI')
 HOST = os.getenv('HOST')
-USER = os.getenv('USER')
+USER = os.getenv('DB_USER')
 PASSWORD = os.getenv('PASSWORD')
 DATABASE = os.getenv('DATABASE')
 PORT = os.getenv('PORT')
@@ -55,12 +55,17 @@ time_table = pd.DataFrame({
 # Create the DimProduct table data
 product_table = df[['StockCode', 'Description']].drop_duplicates(subset='StockCode').set_index('StockCode')
 
-# Create the DimCustomer table data
-customer_table = df[['CustomerID', 'Country']].drop_duplicates().set_index('CustomerID')
-
-# Create the DimGeography table data
-geography_table = df[['Country']].drop_duplicates()
+# Create the DimGeography table data (must come BEFORE DimCustomer)
+geography_table = df[['Country']].drop_duplicates().reset_index(drop=True)
 geography_table['GeoID'] = range(1, len(geography_table) + 1)
+
+# Create the DimCustomer table data (linked to DimGeography via GeoID)
+customer_table = (
+    df[['CustomerID', 'Country']].drop_duplicates()
+    .merge(geography_table, on='Country')
+    .drop(columns='Country')
+    .set_index('CustomerID')
+)
 geography_table = geography_table.set_index('GeoID')
 
 # Create the FactSales table data
@@ -79,11 +84,11 @@ try:
     # Load the product_table
     product_table.to_sql('DimProduct', engine, if_exists='append')
 
+    # Load the geography_table (before customer)
+    geography_table.to_sql('DimGeography', engine, if_exists='append')
+
     # Load the customer_table
     customer_table.to_sql('DimCustomer', engine, if_exists='append')
-
-    # Load the geography_table
-    geography_table.to_sql('DimGeography', engine, if_exists='append')
 
     # Load the sales_table
     sales_table.to_sql('FactSales', engine, if_exists='append')
